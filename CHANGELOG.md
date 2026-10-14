@@ -10,6 +10,7 @@ The project uses Semantic Versioning (`MAJOR.MINOR.PATCH`) beginning with the 2.
 
 ### Performance and reliability
 
+- Use the current `pymupdf` import in the PDF viewer to remove the legacy `fitz` deprecation warning and retain compatibility with future PyMuPDF releases.
 - Reuse existing Treeview rows on refresh and reorder them in place when sorting; preserve selection, focus, natural/numeric/date sorting, and blank values at the bottom.
 - Autosize once when loading a profile, then measure only added or changed row values to grow columns. Sorting and unchanged refreshes preserve column widths; double-clicking a separator still autosizes that column to the current displayed values.
 - Fetch attachment metadata for each record tab in one query, without document BLOBs. Cache compact 27×27 thumbnails by profile, attachment ID, content hash, and filename; discard obsolete previews when documents are removed, changed, or profiles switch.

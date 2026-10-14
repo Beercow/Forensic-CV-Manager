@@ -6,7 +6,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-import fitz  # PyMuPDF
+import pymupdf
 from PIL import Image, ImageTk
 
 
@@ -75,7 +75,7 @@ class PdfPreviewWindow(tk.Toplevel):
         self.pdf_path = Path(pdf_path)
         self.default_save_path = Path(default_save_path)
         self.on_saved = on_saved
-        self.doc = fitz.open(str(self.pdf_path))
+        self.doc = pymupdf.open(str(self.pdf_path))
         self.page_index = 0
         self.zoom = 1.15
         self._photo = None
@@ -110,7 +110,7 @@ class PdfPreviewWindow(tk.Toplevel):
         if not self.doc.page_count:
             return
         page = self.doc.load_page(self.page_index)
-        matrix = fitz.Matrix(self.zoom, self.zoom)
+        matrix = pymupdf.Matrix(self.zoom, self.zoom)
         pix = page.get_pixmap(matrix=matrix, alpha=False)
         mode = 'RGB'
         im = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
