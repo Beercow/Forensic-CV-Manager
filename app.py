@@ -26,7 +26,7 @@ from ui_modern import SplashScreen, PdfPreviewWindow, make_preview_temp_path, re
 from attachments import (
     ATTACHMENT_TABLES, AttachmentPicker, AttachmentViewer,
     all_profile_attachments, ensure_attachment_schema, export_profile_documents,
-    get_attachment, list_attachments, thumbnail_photo,
+    get_attachment, list_attachments, thumbnail_photo, table_attachment_metadata,
 )
 
 DATE_FIELDS = {"start_date", "end_date", "graduation_date", "attended_date", "expiration_date", "earned_date", "testimony_date", "achievement_date"}
@@ -272,12 +272,19 @@ class RecordDialog(tk.Toplevel):
 
 
 class RecordsTab(ttk.Frame):
-    def __init__(self, parent, db: Database, table: str, status_callback):
+    def __init__(self, parent, db: Database, table: str, status_callback, mutation_callback=None):
         super().__init__(parent)
         self.db = db
         self.table = table
         self.config_data = TABLE_CONFIG[table]
         self.status_callback = status_callback
+        self.mutation_callback = mutation_callback or (lambda: None)
+        self._rows = []
+        self._rendered = {}
+        self._thumbnail_cache = {}
+        self._attachment_metadata = {}
+        self._profile_id = None
+        self._sized = False
         self.search_var = tk.StringVar()
         self.sort_column: str | None = None
         self.sort_descending = False
@@ -433,14 +440,30 @@ class RecordsTab(ttk.Frame):
             self.sort_column = column
             self.sort_descending = False
         self._update_headings()
-        self.refresh()
+        self._render_rows()
 
     def refresh(self):
+        if self._profile_id != self.db.current_profile_id:
+            self._thumbnail_cache.clear()
+            self._rendered.clear()
+            self._thumbnail_refs.clear()
+            self.tree.delete(*self.tree.get_children())
+            self._sized = False
+            self._profile_id = self.db.current_profile_id
+        self._rows = self.db.list_rows(self.table)
+        if self.attachments_enabled:
+            self._attachment_metadata = table_attachment_metadata(self.db, self.table)
+            valid = {
+                (self._profile_id, meta["id"], meta["sha256"], meta["original_name"])
+                for items in self._attachment_metadata.values() for meta in items[:1]
+            }
+            self._thumbnail_cache = {key: value for key, value in self._thumbnail_cache.items() if key in valid}
+        self._render_rows()
+
+    def _render_rows(self):
         term = self.search_var.get().lower().strip()
-        selected = set(self.tree.selection())
-        self.tree.delete(*self.tree.get_children())
         rows = []
-        for row in self.db.list_rows(self.table):
+        for row in self._rows:
             hay = " ".join(str(v or "") for v in row.values()).lower()
             if term and term not in hay:
                 continue
@@ -457,7 +480,12 @@ class RecordsTab(ttk.Frame):
             )
             rows = populated + blanks
 
-        self._thumbnail_refs.clear()
+        desired = {str(row["id"]) for row in rows}
+        for iid in set(self._rendered) - desired:
+            self.tree.delete(iid)
+            self._rendered.pop(iid)
+            self._thumbnail_refs.pop(iid, None)
+        changed_values = []
         for row in rows:
             values = []
             for col in self.config_data["display"]:
@@ -467,23 +495,51 @@ class RecordsTab(ttk.Frame):
                 values.append("" if value is None else value)
             iid = str(row["id"])
             if self.attachments_enabled:
-                attachments = list_attachments(self.db, self.table, row["id"])
+                attachments = self._attachment_metadata.get(row["id"], [])
                 image = None
                 label = ""
                 if attachments:
-                    full = get_attachment(self.db, attachments[0]["id"])
-                    if full:
-                        image = thumbnail_photo(self, full)
-                        if image is not None:
-                            self._thumbnail_refs[iid] = image
+                    meta = attachments[0]
+                    key = (self._profile_id, meta["id"], meta["sha256"], meta["original_name"])
+                    if key not in self._thumbnail_cache:
+                        full = get_attachment(self.db, meta["id"])
+                        self._thumbnail_cache[key] = thumbnail_photo(self, full)
+                    image = self._thumbnail_cache[key]
+                    if image is not None:
+                        self._thumbnail_refs[iid] = image
                     label = str(len(attachments)) if len(attachments) > 1 else ""
-                self.tree.insert("", "end", iid=iid, text=label, image=image or "", values=values)
+                if image is None:
+                    self._thumbnail_refs.pop(iid, None)
+                options = dict(text=label, image=image or "", values=values)
             else:
-                self.tree.insert("", "end", iid=iid, values=values)
-            if iid in selected:
-                self.tree.selection_add(iid)
-        self._autosize_all_columns()
+                options = dict(values=values)
+            signature = (tuple(values), options.get("text", ""), str(options.get("image", "")))
+            if iid not in self._rendered:
+                self.tree.insert("", "end", iid=iid, **options)
+                changed_values.append(values)
+            elif self._rendered[iid] != signature:
+                self.tree.item(iid, **options)
+                changed_values.append(values)
+            self._rendered[iid] = signature
+        order = tuple(str(row["id"]) for row in rows)
+        if tuple(self.tree.get_children()) != order:
+            # Tcl reorders existing items in one call; selection and images survive.
+            self.tree.set_children("", *order)
+        if not self._sized:
+            self._autosize_all_columns()
+            self._sized = True
+        elif changed_values:
+            body_font = tkfont.nametofont("TkDefaultFont")
+            for index, col in enumerate(self.config_data["display"]):
+                width = max(body_font.measure(str(values[index] or "")) + 28 for values in changed_values)
+                if width > self.tree.column(col, "width"):
+                    self.tree.column(col, width=width)
         self.status_callback(f"{self.config_data['label']}: {len(self.tree.get_children())} record(s)")
+
+    def _after_mutation(self):
+        # Invalidate even if rendering fails after a successful database write.
+        self.mutation_callback()
+        self.refresh()
 
     def selected_id(self):
         sel = self.tree.selection()
@@ -494,9 +550,11 @@ class RecordsTab(ttk.Frame):
         self.wait_window(dlg)
         if dlg.result is not None:
             row_id = self.db.insert_row(self.table, dlg.result)
-            if dlg.attachment_picker is not None:
-                dlg.attachment_picker.commit(row_id)
-            self.refresh()
+            try:
+                if dlg.attachment_picker is not None:
+                    dlg.attachment_picker.commit(row_id)
+            finally:
+                self._after_mutation()
 
     def edit(self):
         row_id = self.selected_id()
@@ -507,9 +565,11 @@ class RecordsTab(ttk.Frame):
         self.wait_window(dlg)
         if dlg.result is not None:
             self.db.update_row(self.table, row_id, dlg.result)
-            if dlg.attachment_picker is not None:
-                dlg.attachment_picker.commit(row_id)
-            self.refresh()
+            try:
+                if dlg.attachment_picker is not None:
+                    dlg.attachment_picker.commit(row_id)
+            finally:
+                self._after_mutation()
 
     def delete(self):
         row_id = self.selected_id()
@@ -518,7 +578,7 @@ class RecordsTab(ttk.Frame):
             return
         if messagebox.askyesno("Delete Record", "Delete the selected record?", parent=self):
             self.db.delete_row(self.table, row_id)
-            self.refresh()
+            self._after_mutation()
 
 
 class App(tk.Tk):
@@ -561,7 +621,7 @@ class App(tk.Tk):
         self._profile_tab()
         self.record_tabs = {}
         for table in TABLE_CONFIG:
-            tab = RecordsTab(self.notebook, self.db, table, self.set_status)
+            tab = RecordsTab(self.notebook, self.db, table, self.set_status, self.invalidate_dashboard)
             self.record_tabs[table] = tab
             self.notebook.add(tab, text=TABLE_CONFIG[table]["label"])
         self._generate_tab()
@@ -738,7 +798,8 @@ The working database is stored in the data folder beside the application. Genera
 2. Open the appropriate tab, such as Training, Certifications, or Courtroom Testimony.
 3. Select Add in the upper-right corner of that tab.
 4. Complete the fields in the Add Record window.
-5. Select Save. The new record appears in the table and is immediately available to the dashboard and CV generator.
+5. For supported record types, use Add Document... to select supporting files.
+6. Select Save. The new record appears in the table and is immediately available to the dashboard and CV generator.
 
 DATE ENTRY
 Common date formats are accepted, including 3/5/2026, 03-05-2026, 2026-03-05, March 5, 2026, March 2026, 03/2026, and 2026. Employment end dates may use Present, Current, Ongoing, or Now. Dates are normalized internally for reliable sorting.
@@ -750,7 +811,23 @@ TRAINING HOURS
 Enter only the documented course hours as a number. Leave the field blank when hours are unknown. Training totals are calculated automatically.
 
 CORE TRAINING
-On a training record, select Include in Core Training when the course should appear in the concise Core Training section of the CV.""",
+On a training record, select Include in Core Training when the course should appear in the concise Core Training section of the CV.
+
+SORTING AND COLUMN WIDTHS
+
+Click a column heading to sort ascending; click it again to sort descending. The heading arrow shows the current direction. Dates sort chronologically, hours numerically, and text in natural order. Sorting changes only the displayed list and preserves the selected record and column widths.
+
+Columns fit their headings and data when a profile is loaded. Added or edited values can widen a column. Double-click the separator at the right edge of a heading to fit that column to its currently displayed values. The Document column also supports separator autosizing.
+
+SUPPORTING DOCUMENTS
+
+Employment, Education, Training, Certifications, Teaching, Organizations, Skills & Tools, and Achievements support multiple document attachments. Use the Documents section in Add or Edit to add, open, or remove files before saving.
+
+Files are stored inside the SQLite database and included in normal database backups. The Document column displays a compact 27 by 27 pixel preview and indicates the count when multiple files are attached. Select the preview to open the enlarged viewer; use Open Original for the operating system's associated application.
+
+The first load of a profile creates its thumbnails. Sorting and later refreshes reuse unchanged previews; document changes and profile switches update them. The enlarged viewer is unchanged.
+
+On Generate CV, use Export Documents ZIP... to export supporting documents with a SHA-256 manifest.""",
             "Editing and Deleting": """EDITING AND DELETING RECORDS
 
 To edit a record, select it in the table and choose Edit. Make the changes and select Save.
@@ -764,7 +841,12 @@ Use the Active Profile list to switch between examiners. All records, dashboard 
 
 Select Manage Profiles to add, rename, switch, or delete profiles. Duplicate profile names are displayed with a parenthetical number for clarity.
 
-File > Export Current Profile creates a portable profile package. File > Import Profile loads a profile package into the current database.""",
+File > Export Current Profile creates a portable profile package. File > Import Profile loads a profile package into the current database.
+
+DASHBOARD
+Training hours, professional record counts, and certification expiration alerts are scoped to the Active Profile. Totals refresh automatically after adding, editing, or deleting records. Switching profiles, importing a profile, or clearing its records also refreshes the dashboard.
+
+Refresh Dashboard remains available for a manual update. Returning to Dashboard checks for profile and date changes so expiration alerts stay current.""",
             "Generating a CV": """GENERATING A CV
 
 1. Select the correct Active Profile.
@@ -773,12 +855,16 @@ File > Export Current Profile creates a portable profile package. File > Import 
 4. Choose Generate Word CV, Preview & Save PDF, or Generate Word + PDF.
 5. Confirm the suggested filename and Resume folder location.
 
-Date-based sections are ordered newest to oldest. Long entries and multiline descriptions are included in full. PDF documents are generated directly by the application and do not require Microsoft Word or LibreOffice. Word output remains available for later editing.""",
+Date-based sections are ordered newest to oldest. Long entries and multiline descriptions are included in full. PDF documents are generated directly by the application and do not require Microsoft Word or LibreOffice. Word output remains available for later editing.
+
+Preview & Save PDF opens the integrated viewer. Use Previous/Next, Zoom, and Fit Width, then Save PDF to keep the reviewed document.""",
             "Backup and Portability": """BACKUP AND PORTABILITY
 
 The application is designed to run from a portable folder or flash drive. Keep the executable, data folder, Resume folder, and Backups folder together.
 
 Use File > Backup Database to copy the current SQLite database to another drive or secure location. Use File > Restore Database to replace the working database with a backup.
+
+The SQLite database includes supporting documents. Version 2.5.1 retains the existing record and attachment schema; no manual conversion is needed. Keep your working database and portable folders when updating the application.
 
 Do not rely on a flash drive as the only copy of professional records. Maintain a separate encrypted or agency-approved backup.""",
         }
@@ -979,6 +1065,10 @@ Do not rely on a flash drive as the only copy of professional records. Maintain 
             self.set_status(f"All records cleared for {name}")
 
     def _dashboard_tab(self):
+        self._dashboard_dirty = True
+        self._dashboard_pending = None
+        self._dashboard_key = None
+        self._metric_labels = []
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text="Dashboard")
         ttk.Label(tab, text="Professional Qualifications Dashboard", style="Title.TLabel").pack(anchor="w", padx=20, pady=(20, 10))
@@ -996,18 +1086,29 @@ Do not rely on a flash drive as the only copy of professional records. Maintain 
         self.dashboard_chart.pack(fill="both", expand=True)
         self.refresh_dashboard()
 
+    def invalidate_dashboard(self):
+        """Coalesce mutations into one refresh on the Tk event loop."""
+        self._dashboard_dirty = True
+        if self._dashboard_pending is None:
+            self._dashboard_pending = self.after_idle(self.refresh_dashboard)
+
     def refresh_dashboard(self):
-        for w in self.metrics_frame.winfo_children():
-            w.destroy()
+        if self._dashboard_pending is not None:
+            self.after_cancel(self._dashboard_pending)
+            self._dashboard_pending = None
         total_hours = self.db.scalar("SELECT COALESCE(SUM(hours),0) FROM training") or 0
         expert = self.db.scalar("SELECT COUNT(*) FROM testimony WHERE witness_type='Expert Witness'") or 0
         fact = self.db.scalar("SELECT COUNT(*) FROM testimony WHERE witness_type='Fact Witness'") or 0
         metrics = [("Training Hours", f"{total_hours:,.2f}"), ("Training Records", str(self.db.count('training'))), ("Certifications", str(self.db.count('certifications'))), ("Expert Testimony", str(expert)), ("Fact Testimony", str(fact))]
         for i, (label, value) in enumerate(metrics):
-            box = ttk.LabelFrame(self.metrics_frame, text=label, padding=12)
-            box.grid(row=0, column=i, padx=5, sticky="nsew")
-            ttk.Label(box, text=value, style="Metric.TLabel").pack()
-            self.metrics_frame.columnconfigure(i, weight=1)
+            if i >= len(self._metric_labels):
+                box = ttk.LabelFrame(self.metrics_frame, text=label, padding=12)
+                box.grid(row=0, column=i, padx=5, sticky="nsew")
+                metric = ttk.Label(box, style="Metric.TLabel")
+                metric.pack()
+                self._metric_labels.append(metric)
+                self.metrics_frame.columnconfigure(i, weight=1)
+            self._metric_labels[i].configure(text=value)
         expiring = self.db.conn.execute("SELECT certification, expiration_date FROM certifications WHERE profile_id=? AND expiration_date <> '' ORDER BY expiration_date", (self.db.current_profile_id,)).fetchall()
         alerts = []
         for r in expiring:
@@ -1034,6 +1135,8 @@ Do not rely on a flash drive as the only copy of professional records. Maintain 
         self.summary_text.config(state="disabled")
 
         counts = [("Training", self.db.count("training")), ("Certs", self.db.count("certifications")), ("Testimony", self.db.count("testimony")), ("Teaching", self.db.count("teaching")), ("Education", self.db.count("education"))]
+        self._dashboard_dirty = False
+        self._dashboard_key = (self.db.current_profile_id, date.today())
         self.dashboard_chart.delete("all")
         self.dashboard_chart.update_idletasks()
         width = max(self.dashboard_chart.winfo_width(), 360); height = max(self.dashboard_chart.winfo_height(), 260)
@@ -1216,6 +1319,8 @@ Do not rely on a flash drive as the only copy of professional records. Maintain 
             return
 
         if tab_text == "Dashboard":
+            if self._dashboard_dirty or self._dashboard_key != (self.db.current_profile_id, date.today()):
+                self.refresh_dashboard()
             profile = self.db.get_profile()
             name = profile.get("profile_name") or profile.get("preferred_name") or profile.get("full_name") or "Current profile"
             self.set_status(f"Dashboard: {name}")

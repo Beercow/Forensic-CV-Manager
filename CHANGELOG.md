@@ -6,7 +6,22 @@ The project uses Semantic Versioning (`MAJOR.MINOR.PATCH`) beginning with the 2.
 
 ---
 
-## 2.5.0 — Unreleased
+## 2.5.1 — 2026-10-14
+
+### Performance and reliability
+
+- Use the current `pymupdf` import in the PDF viewer to remove the legacy `fitz` deprecation warning and retain compatibility with future PyMuPDF releases.
+- Reuse existing Treeview rows on refresh and reorder them in place when sorting; preserve selection, focus, natural/numeric/date sorting, and blank values at the bottom.
+- Autosize once when loading a profile, then measure only added or changed row values to grow columns. Sorting and unchanged refreshes preserve column widths; double-clicking a separator still autosizes that column to the current displayed values.
+- Fetch attachment metadata for each record tab in one query, without document BLOBs. Cache compact 27×27 thumbnails by profile, attachment ID, content hash, and filename; discard obsolete previews when documents are removed, changed, or profiles switch.
+- Initialize attachment storage once per database instance instead of repeating schema operations for every attachment read.
+- Invalidate the dashboard after add, edit, and delete, including a record saved before an attachment failure. Coalesce refreshes on the Tk event loop and reuse metric widgets; refresh on dashboard selection when the profile or date changes.
+- Preserve existing SQLite schema, records, attachment storage, and enlarged document viewing.
+- Add real Tk regression tests using synthetic records and documents. Private uploaded data is used only for local profiling and is excluded from commits.
+- Add a reproducible synthetic refresh benchmark and configure GitHub Actions to run the GUI tests with a virtual display on main, feature branches, and pull requests to main.
+- Update the README, standalone and in-app user manuals, and installer welcome text for dashboard refreshes, stable column widths, cached previews, and database compatibility.
+
+## 2.5.0 — Document attachments
 
 ### Document attachments
 
@@ -257,7 +272,7 @@ The following repository-level changes are not tied to a specific application fe
 - Added GNU General Public License v3 project licensing.
 - Added GitHub Sponsors/Funding configuration for Buy Me a Coffee support.
 - Updated Buy Me a Coffee funding information after initial configuration.
-- Maintained the v2.4.0 `main` branch as the stable baseline while v2.5.0 document-attachment work is developed and tested separately.
+- Developed the v2.5.0 attachment changes and v2.5.1 refresh improvements on feature branches before integrating approved changes into `main`.
 
 ---
 
@@ -265,6 +280,7 @@ The following repository-level changes are not tied to a specific application fe
 
 | Version | Primary focus |
 | --- | --- |
+| 2.5.1 | Faster record refresh and sorting, thumbnail caching, automatic dashboard updates, PDF preview compatibility |
 | 2.5.0 | Supporting-document attachments, previews, ZIP export, list autosizing, update-checker repair |
 | 2.4.0 | Sortable record columns |
 | 2.3.4 | Status-bar and PDF workflow cleanup |

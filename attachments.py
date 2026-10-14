@@ -43,6 +43,8 @@ FILE_TYPES = [
 
 def ensure_attachment_schema(db) -> None:
     """Create attachment storage and delete triggers without altering record tables."""
+    if getattr(db, "_attachment_schema_ready", False):
+        return
     db.conn.execute(
         """CREATE TABLE IF NOT EXISTS attachments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +73,23 @@ def ensure_attachment_schema(db) -> None:
             END"""
         )
     db.conn.commit()
+    db._attachment_schema_ready = True
+
+
+def table_attachment_metadata(db, table: str) -> dict[int, list[dict[str, Any]]]:
+    """Fetch list previews in one query without reading document BLOBs."""
+    _validate_table(table)
+    ensure_attachment_schema(db)
+    rows = db.conn.execute(
+        """SELECT id, record_id, original_name, sha256 FROM attachments
+           WHERE profile_id=? AND record_table=?
+           ORDER BY original_name COLLATE NOCASE, id""",
+        (db.current_profile_id, table),
+    ).fetchall()
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(row["record_id"], []).append(dict(row))
+    return grouped
 
 
 def _validate_table(table: str) -> None:
