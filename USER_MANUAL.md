@@ -1,4 +1,4 @@
-# Forensic CV Manager User Manual
+# Forensic CV Manager 2.5.1 User Manual
 
 ## Adding records
 
@@ -23,6 +23,8 @@ A record may contain multiple attachments. Use the Documents section in the Add 
 
 On supported record tabs, the first attachment is represented in the **Document** column. PDF and image files display a thumbnail. Select the preview to open the enlarged document viewer. If more than one document is attached, the preview also indicates the attachment count.
 
+List thumbnails remain compact at 27×27 pixels. They are created when needed and reused during sorting and refreshes. The first load of a profile may take longer when many documents are attached; changing or removing a document updates its preview.
+
 The enlarged viewer renders PDF first pages and image files directly. Office documents and other formats can be opened using **Open Original**, which launches the file in the operating system's associated application.
 
 ## Editing and deleting
@@ -34,6 +36,12 @@ Select **Delete** to permanently remove a record. Attached documents associated 
 ## Profiles
 
 Use **Active Profile** to switch examiners. Select **Manage Profiles** to add, rename, switch, or delete profiles. Profile import and export are available from the File menu.
+
+## Dashboard
+
+The Dashboard shows training hours, professional record counts, and certification expiration alerts for the active profile. Totals refresh automatically after adding, editing, or deleting records. Switching profiles, importing a profile, or clearing its records also refreshes the dashboard.
+
+Use **Refresh Dashboard** for a manual update. Returning to the Dashboard tab checks for profile and date changes so expiration alerts reflect the current day.
 
 ## Generating a CV
 
@@ -62,3 +70,9 @@ On **Generate CV**, select **Preview & Save PDF**. A temporary native PDF opens 
 ## Sorting Records
 
 Record lists can be sorted by clicking a column heading. Click once for ascending order and click the same heading again for descending order. The active heading displays an arrow showing the current direction. Dates are sorted chronologically, hours numerically, and text alphabetically using natural ordering. Sorting changes only the on-screen list; it does not alter the database or the chronological ordering used by generated CV reports.
+
+Sorting keeps the selected record and column widths. Columns automatically fit their headings and data when a profile is loaded. Added or edited values can widen a column without resizing the entire table. To fit an individual column to its current displayed values, double-click the separator at the right edge of its heading, including the Document heading.
+
+## Updating from an earlier version
+
+Version 2.5.1 uses the existing SQLite record and attachment schema. No manual data conversion is needed. Keep a database backup before replacing the application, and retain your existing working database and portable folders.

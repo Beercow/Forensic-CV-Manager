@@ -798,7 +798,8 @@ The working database is stored in the data folder beside the application. Genera
 2. Open the appropriate tab, such as Training, Certifications, or Courtroom Testimony.
 3. Select Add in the upper-right corner of that tab.
 4. Complete the fields in the Add Record window.
-5. Select Save. The new record appears in the table and is immediately available to the dashboard and CV generator.
+5. For supported record types, use Add Document... to select supporting files.
+6. Select Save. The new record appears in the table and is immediately available to the dashboard and CV generator.
 
 DATE ENTRY
 Common date formats are accepted, including 3/5/2026, 03-05-2026, 2026-03-05, March 5, 2026, March 2026, 03/2026, and 2026. Employment end dates may use Present, Current, Ongoing, or Now. Dates are normalized internally for reliable sorting.
@@ -810,7 +811,23 @@ TRAINING HOURS
 Enter only the documented course hours as a number. Leave the field blank when hours are unknown. Training totals are calculated automatically.
 
 CORE TRAINING
-On a training record, select Include in Core Training when the course should appear in the concise Core Training section of the CV.""",
+On a training record, select Include in Core Training when the course should appear in the concise Core Training section of the CV.
+
+SORTING AND COLUMN WIDTHS
+
+Click a column heading to sort ascending; click it again to sort descending. The heading arrow shows the current direction. Dates sort chronologically, hours numerically, and text in natural order. Sorting changes only the displayed list and preserves the selected record and column widths.
+
+Columns fit their headings and data when a profile is loaded. Added or edited values can widen a column. Double-click the separator at the right edge of a heading to fit that column to its currently displayed values. The Document column also supports separator autosizing.
+
+SUPPORTING DOCUMENTS
+
+Employment, Education, Training, Certifications, Teaching, Organizations, Skills & Tools, and Achievements support multiple document attachments. Use the Documents section in Add or Edit to add, open, or remove files before saving.
+
+Files are stored inside the SQLite database and included in normal database backups. The Document column displays a compact 27 by 27 pixel preview and indicates the count when multiple files are attached. Select the preview to open the enlarged viewer; use Open Original for the operating system's associated application.
+
+The first load of a profile creates its thumbnails. Sorting and later refreshes reuse unchanged previews; document changes and profile switches update them. The enlarged viewer is unchanged.
+
+On Generate CV, use Export Documents ZIP... to export supporting documents with a SHA-256 manifest.""",
             "Editing and Deleting": """EDITING AND DELETING RECORDS
 
 To edit a record, select it in the table and choose Edit. Make the changes and select Save.
@@ -824,7 +841,12 @@ Use the Active Profile list to switch between examiners. All records, dashboard 
 
 Select Manage Profiles to add, rename, switch, or delete profiles. Duplicate profile names are displayed with a parenthetical number for clarity.
 
-File > Export Current Profile creates a portable profile package. File > Import Profile loads a profile package into the current database.""",
+File > Export Current Profile creates a portable profile package. File > Import Profile loads a profile package into the current database.
+
+DASHBOARD
+Training hours, professional record counts, and certification expiration alerts are scoped to the Active Profile. Totals refresh automatically after adding, editing, or deleting records. Switching profiles, importing a profile, or clearing its records also refreshes the dashboard.
+
+Refresh Dashboard remains available for a manual update. Returning to Dashboard checks for profile and date changes so expiration alerts stay current.""",
             "Generating a CV": """GENERATING A CV
 
 1. Select the correct Active Profile.
@@ -833,12 +855,16 @@ File > Export Current Profile creates a portable profile package. File > Import 
 4. Choose Generate Word CV, Preview & Save PDF, or Generate Word + PDF.
 5. Confirm the suggested filename and Resume folder location.
 
-Date-based sections are ordered newest to oldest. Long entries and multiline descriptions are included in full. PDF documents are generated directly by the application and do not require Microsoft Word or LibreOffice. Word output remains available for later editing.""",
+Date-based sections are ordered newest to oldest. Long entries and multiline descriptions are included in full. PDF documents are generated directly by the application and do not require Microsoft Word or LibreOffice. Word output remains available for later editing.
+
+Preview & Save PDF opens the integrated viewer. Use Previous/Next, Zoom, and Fit Width, then Save PDF to keep the reviewed document.""",
             "Backup and Portability": """BACKUP AND PORTABILITY
 
 The application is designed to run from a portable folder or flash drive. Keep the executable, data folder, Resume folder, and Backups folder together.
 
 Use File > Backup Database to copy the current SQLite database to another drive or secure location. Use File > Restore Database to replace the working database with a backup.
+
+The SQLite database includes supporting documents. Version 2.5.1 retains the existing record and attachment schema; no manual conversion is needed. Keep your working database and portable folders when updating the application.
 
 Do not rely on a flash drive as the only copy of professional records. Maintain a separate encrypted or agency-approved backup.""",
         }

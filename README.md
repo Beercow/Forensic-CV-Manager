@@ -2,6 +2,15 @@
 
 Forensic CV Manager is a portable SQLite-backed desktop application for tracking professional qualifications and generating court-ready curricula vitae.
 
+## What's new in 2.5.1
+
+- Faster record refreshes and column sorting through reuse of existing rows and cached document thumbnails.
+- Automatic dashboard updates after adding, editing, or deleting records, with refreshed totals when changing profiles.
+- Column widths remain stable during sorting and unchanged refreshes. Added or edited values can widen a column; double-click a separator to fit the column to the displayed content.
+- Updated PDF preview imports to remove the legacy PyMuPDF `fitz` deprecation warning.
+
+Existing databases and stored attachments remain compatible; no manual data conversion is needed. List thumbnails remain 27×27 pixels, and the enlarged document viewer is unchanged. The first load of a profile still renders its document thumbnails; later refreshes reuse them while their content is unchanged.
+
 ## Release privacy
 
 The release template contains only fictitious demonstration data for **Alex Morgan** at the fictional **Metro Regional Public Safety Laboratory**. No developer, agency, personal email, phone number, case number, or employment history is included.
@@ -95,10 +104,10 @@ Without a trusted certificate, Windows may display **Unknown Publisher**. The bu
 
 ## Update checker
 
-Edit `app_config.py` before publishing:
+The update checker is configured in `app_config.py` for this repository:
 
 ```python
-GITHUB_REPOSITORY = "owner/repository"
+GITHUB_REPOSITORY = "JSPadilla/Forensic-CV-Manager"
 ```
 
 The checker reads the latest public GitHub release and compares its tag with `APP_VERSION`. It does not download or install updates automatically.
@@ -132,3 +141,27 @@ Open **Help > User Manual** for instructions covering profiles, adding records, 
 ## Sorting Records
 
 Record lists can be sorted by clicking a column heading. Click once for ascending order and click the same heading again for descending order. The active heading displays an arrow showing the current direction. Dates are sorted chronologically, hours numerically, and text alphabetically using natural ordering. Sorting changes only the on-screen list; it does not alter the database or the chronological ordering used by generated CV reports.
+
+Sorting preserves the selected record and column widths. Columns fit their headings and data when a profile is loaded, then grow only as needed for added or edited values. To refit a column, double-click the separator at the right edge of its heading. This also works for the Document column.
+
+## Dashboard refresh
+
+Training hours, record counts, and certification alerts refresh automatically after record changes. Switching profiles, importing a profile, or clearing the active profile's records also refreshes the dashboard. **Refresh Dashboard** remains available for a manual refresh. Returning to the Dashboard tab also checks for profile and date changes so expiration alerts stay current.
+
+## Testing and profiling
+
+Run the test suite from the repository folder:
+
+```text
+python -m unittest discover -s tests -v
+```
+
+The GUI regression tests require Tk and a display. On Linux without a desktop, use `xvfb-run -a python -m unittest discover -s tests -v` with Xvfb installed. GitHub Actions runs these checks for main, feature branches, and pull requests to main.
+
+To measure refreshes and sorting with synthetic records and documents:
+
+```text
+python tools/benchmark_refresh.py --records 1000 --samples 5
+```
+
+The optional `--database PATH` argument profiles a disposable copy of an existing SQLite database. The source database is opened read-only, and output contains aggregate timings and call counts. Timings include profiling overhead; repeated refresh and sorting measurements use the thumbnail cache after initial loading. Keep personal databases, documents, and test archives outside the repository.

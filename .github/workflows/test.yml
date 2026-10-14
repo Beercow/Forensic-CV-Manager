@@ -3,7 +3,8 @@ name: Tests
 on:
   push:
     branches:
-      - feature/2.5.0-document-attachments
+      - main
+      - 'feature/**'
   pull_request:
     branches:
       - main
@@ -32,5 +33,10 @@ jobs:
       - name: Validate Python syntax
         run: python -m compileall -q .
 
+      - name: Install virtual display for GUI tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb python3-tk
+
       - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: xvfb-run -a python -m unittest discover -s tests -v
